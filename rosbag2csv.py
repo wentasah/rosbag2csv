@@ -3,6 +3,7 @@
 
 # Copyright 2020 Open Source Robotics Foundation, Inc.
 # Copyright 2023, 2024 Michal Sojka <michal.sojka@cvut.cz>
+# Copyright 2024 Kevin Sommler <s50948@bht-berlin.de>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +20,9 @@
 import os
 import os.path
 import sys
+
+import pandas as pd
+from pathlib import Path
 
 from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
@@ -109,8 +113,54 @@ def dump_bag(bag_path):
         msg_cnt += 1
 
 
+def add_multi_indices(fpath: Path) -> pd.DataFrame:
+    """
+    Load ImuData Stream from csv bag
+
+    Loads the Data from CSV into a multi-indexed DataFrame, which allows a 'more
+    convenient' way to access the data.
+
+    Parameters
+    ----------
+    fpath
+        file path to the csv file to be loaded.
+
+    Returns
+    -------
+        Multi-Indexed Pandas Dataframe.
+    """
+
+    flist = fpath.glob('*.csv')
+
+    for file in flist:
+        try:
+            df = pd.read_csv(file)
+
+            cols_ = []
+            for col in df.columns:
+                if col == 'time':
+                    indexes = ('RosBag', 'timestamp',)
+                elif col == 'timestamp':
+                    indexes = ('IMUDataArray', 'timestamp',)
+                else:
+                    indexes = col.split('.', 2)
+                cols_.append(indexes)
+
+            df.columns = pd.MultiIndex.from_tuples(cols_)
+            df.to_csv(file, index=False)
+            print(f"Multi-Indexing done for {file}")
+        except Exception as e:
+            print(f"Error: {e}")
+
+
+
 if len(sys.argv) == 2:
+    # Generate CSV files from ROS 2 bag (without multi-indexing)
     dump_bag(sys.argv[1])
+
+    # Add multi-indexing
+    fpath = Path(sys.argv[1])
+    df = add_multi_indices(fpath)
 else:
     print("Usage: {} <bag directory>".format(sys.argv[0]), file=sys.stderr)
     sys.exit(1)
